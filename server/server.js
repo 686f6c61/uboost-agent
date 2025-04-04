@@ -1,3 +1,6 @@
+// Cargar variables de entorno desde .env al inicio
+require('dotenv').config();
+
 const express = require('express');
 const cors = require('cors');
 const multer = require('multer');
@@ -16,6 +19,59 @@ const PORT = process.env.PORT || 5000;
 
 // Ruta para el archivo de metadatos
 const METADATA_FILE = path.join(__dirname, 'metadata.json');
+
+// *** Helpers para manejar el archivo .env ***
+const ENV_PATH = path.join(__dirname, '..', '.env'); // .env en la raíz
+
+// Mapeo de proveedores a nombres de variables de entorno
+const PROVIDER_TO_ENV_KEY = {
+  openai: 'OPENAI_API_KEY',
+  anthropic: 'ANTHROPIC_API_KEY',
+  deepseek: 'DEEPSEEK_API_KEY',
+  google: 'GOOGLE_API_KEY'
+};
+
+// Función para leer y parsear el .env (simple, puede mejorarse)
+const readEnvFile = () => {
+  try {
+    if (!fs.existsSync(ENV_PATH)) {
+      return {};
+    }
+    const content = fs.readFileSync(ENV_PATH, 'utf8');
+    const envConfig = {};
+    content.split('\n').forEach(line => {
+      const trimmedLine = line.trim();
+      if (trimmedLine && !trimmedLine.startsWith('#')) {
+        const [key, ...valueParts] = trimmedLine.split('=');
+        if (key) {
+          envConfig[key.trim()] = valueParts.join('=').trim();
+        }
+      }
+    });
+    return envConfig;
+  } catch (error) {
+    console.error("Error reading .env file:", error);
+    return {};
+  }
+};
+
+// Función para escribir el objeto de configuración al .env (sobrescribe)
+const writeEnvFile = (envConfig) => {
+  try {
+    let content = "";
+    for (const [key, value] of Object.entries(envConfig)) {
+      // Solo escribir si la key y el value existen
+      if (key && value) { 
+        content += `${key}=${value}\n`;
+      }
+    }
+    fs.writeFileSync(ENV_PATH, content, 'utf8');
+  } catch (error) {
+    console.error("Error writing .env file:", error);
+    throw error; // Re-lanzar para que la ruta API falle
+  }
+};
+// *** Fin Helpers .env ***
 
 // Función para cargar metadatos
 function loadMetadata() {
@@ -575,6 +631,92 @@ app.delete('/api/metadata/:filename', (req, res) => {
 
 // Servir archivos estáticos desde la carpeta uploads
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+
+// *** NUEVAS RUTAS API para Configuración ***
+
+// Obtener estado de las API Keys configuradas
+app.get('/api/config/apikeys/status', (req, res) => {
+  const status = {};
+  for (const provider in PROVIDER_TO_ENV_KEY) {
+    const envKey = PROVIDER_TO_ENV_KEY[provider];
+    status[provider] = !!process.env[envKey]; // Verifica si la variable de entorno existe
+  }
+  res.json(status);
+});
+
+// Guardar/Actualizar API Keys
+app.post('/api/config/apikeys', (req, res) => {
+  const incomingKeys = req.body; // { openai: 'sk-...', google: 'AIza...', ... }
+  if (!incomingKeys || typeof incomingKeys !== 'object') {
+    return res.status(400).json({ success: false, message: 'Cuerpo inválido.' });
+  }
+
+  try {
+    const currentEnv = readEnvFile();
+    let changed = false;
+
+    for (const provider in PROVIDER_TO_ENV_KEY) {
+      const envKey = PROVIDER_TO_ENV_KEY[provider];
+      const incomingValue = incomingKeys[provider];
+
+      if (typeof incomingValue === 'string' && incomingValue.trim()) {
+        // Añadir o actualizar si es diferente
+        if (currentEnv[envKey] !== incomingValue.trim()) {
+           currentEnv[envKey] = incomingValue.trim();
+           changed = true;
+           console.log(`[API Save Keys] Updating ${envKey}`);
+        }
+      } else {
+        // Si el valor entrante está vacío o no es string, intentar eliminar
+        if (currentEnv[envKey]) {
+          delete currentEnv[envKey];
+          changed = true;
+          console.log(`[API Save Keys] Removing ${envKey} due to empty input`);
+        }
+      }
+    }
+
+    if (changed) {
+      writeEnvFile(currentEnv);
+      // IMPORTANTE: Recargar dotenv para que process.env se actualice en este proceso
+      // Esto es simplista; en producción, reiniciar el servidor es más fiable.
+      require('dotenv').config({ override: true }); 
+      console.log('[API Save Keys] .env file updated. process.env might need server restart to fully reflect changes elsewhere.');
+    }
+    res.json({ success: true, message: 'Configuración guardada.' });
+
+  } catch (error) {
+    res.status(500).json({ success: false, message: 'Error al guardar la configuración.', error: error.message });
+  }
+});
+
+// Borrar API Key específica
+app.delete('/api/config/apikeys/:provider', (req, res) => {
+  const provider = req.params.provider;
+  const envKey = PROVIDER_TO_ENV_KEY[provider];
+
+  if (!envKey) {
+    return res.status(400).json({ success: false, message: 'Proveedor inválido.' });
+  }
+
+  try {
+    const currentEnv = readEnvFile();
+    if (currentEnv[envKey]) {
+      delete currentEnv[envKey];
+      writeEnvFile(currentEnv);
+      // Recargar dotenv (mismo comentario que arriba)
+      require('dotenv').config({ override: true });
+      console.log(`[API Delete Key] Removed ${envKey} from .env`);
+      res.json({ success: true, message: `API Key para ${provider} eliminada.` });
+    } else {
+      res.json({ success: true, message: `API Key para ${provider} no encontrada.` });
+    }
+  } catch (error) {
+    res.status(500).json({ success: false, message: `Error al eliminar la API Key para ${provider}.`, error: error.message });
+  }
+});
+
+// *** FIN NUEVAS RUTAS API ***
 
 // Iniciar el servidor
 app.listen(PORT, () => {

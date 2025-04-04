@@ -164,6 +164,44 @@ const FileService = {
       console.error('Error deleting metadata entry:', error);
       throw error; // O manejar el error de forma más específica
     }
+  },
+  
+  // *** Funciones para gestionar API Keys en el backend (.env) ***
+
+  // Guarda el objeto completo de API keys en el servidor
+  async saveApiKeys(apiKeys) {
+    try {
+      const response = await axios.post(`${API_URL}/config/apikeys`, apiKeys);
+      return response.data;
+    } catch (error) {
+      console.error('Error saving API keys to server:', error.response ? error.response.data : error);
+      throw error;
+    }
+  },
+
+  // Elimina la API key de un proveedor específico en el servidor
+  async deleteApiKey(provider) {
+    try {
+      const response = await axios.delete(`${API_URL}/config/apikeys/${provider}`);
+      return response.data;
+    } catch (error) {
+      console.error(`Error deleting API key for ${provider} on server:`, error.response ? error.response.data : error);
+      throw error;
+    }
+  },
+
+  // Obtiene el estado (si están configuradas o no) de las API keys del servidor
+  async getApiKeyStatus() {
+    try {
+      const response = await axios.get(`${API_URL}/config/apikeys/status`);
+      return response.data; // Espera un objeto como { openai: true, google: false, ... }
+    } catch (error) {
+      console.error('Error fetching API key status from server:', error.response ? error.response.data : error);
+      // Devolver un objeto vacío o con todo en false podría ser una opción de fallback
+      return { openai: false, anthropic: false, deepseek: false, google: false }; 
+      // O re-lanzar el error:
+      // throw error;
+    }
   }
 };
 

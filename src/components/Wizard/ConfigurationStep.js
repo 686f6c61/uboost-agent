@@ -25,12 +25,15 @@ import InfoIcon from '@mui/icons-material/Info';
 import HelpOutlineIcon from '@mui/icons-material/HelpOutline';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import ErrorIcon from '@mui/icons-material/Error';
+import DeleteIcon from '@mui/icons-material/Delete';
+import FileService from '../../services/FileService';
 
 const ConfigurationStep = ({ onNext }) => {
   const [apiKeys, setApiKeys] = useState({
     openai: '',
     anthropic: '',
-    deepseek: ''
+    deepseek: '',
+    google: ''
   });
   const [defaultModel, setDefaultModel] = useState('gpt4o-mini');
   const [advancedOptions, setAdvancedOptions] = useState({
@@ -51,7 +54,8 @@ const ConfigurationStep = ({ onNext }) => {
   const [verified, setVerified] = useState({
     openai: false,
     anthropic: false,
-    deepseek: false
+    deepseek: false,
+    google: false
   });
 
   // Añadir los límites de tokens por modelo
@@ -59,30 +63,48 @@ const ConfigurationStep = ({ onNext }) => {
     'gpt4o': 128000,
     'gpt4o-mini': 32000,
     'sonnet': 200000,
-    'deepseek': 32000
+    'deepseek': 32000,
+    'gemini-2.5-pro': 2097152,
+    'gemini-2.0-flash': 1048576
+  };
+
+  // *** Definir el mapeo aquí para que esté disponible en todo el componente ***
+  const modelToApiKeyMap = {
+    'gpt4o': 'openai',
+    'gpt4o-mini': 'openai',
+    'sonnet': 'anthropic',
+    'deepseek': 'deepseek',
+    'gemini-2.5-pro': 'google',
+    'gemini-2.0-flash': 'google'
   };
 
   // Cargar configuración guardada al iniciar
   React.useEffect(() => {
-    const savedApiKeys = localStorage.getItem('apiKeys');
+    // Eliminar carga de apiKeys de localStorage
+    // const savedApiKeys = localStorage.getItem('apiKeys');
     const savedDefaultModel = localStorage.getItem('defaultModel');
     const savedAdvancedOptions = localStorage.getItem('advancedOptions');
     
-    if (savedApiKeys) {
+    // *** Cargar estado de las keys desde el backend ***
+    const fetchApiKeyStatus = async () => {
       try {
-        const parsedApiKeys = JSON.parse(savedApiKeys);
-        setApiKeys(parsedApiKeys);
-        
-        // Marcar como verificadas las API Keys guardadas
-        const verifiedStatus = {};
-        Object.keys(parsedApiKeys).forEach(key => {
-          verifiedStatus[key] = !!parsedApiKeys[key];
-        });
-        setVerified(verifiedStatus);
+        // Asumiendo que FileService.getApiKeyStatus() existe y devuelve { openai: true, google: false, ... }
+        const status = await FileService.getApiKeyStatus();
+        setVerified(prev => ({ 
+          ...prev, // Mantener valores iniciales por si la API falla
+          openai: !!status.openai, // Asegurarse de que sean booleanos
+          anthropic: !!status.anthropic,
+          deepseek: !!status.deepseek,
+          google: !!status.google
+        }));
       } catch (error) {
-        console.error('Error al cargar API Keys:', error);
+        console.error('Error al cargar estado de API Keys desde el servidor:', error);
+        // Mantener verified en false si hay error
+        setVerified({ openai: false, anthropic: false, deepseek: false, google: false });
       }
-    }
+    };
+    fetchApiKeyStatus();
+    // *** Fin carga estado backend ***
     
     if (savedDefaultModel) {
       setDefaultModel(savedDefaultModel);
@@ -225,14 +247,11 @@ const ConfigurationStep = ({ onNext }) => {
 
   const getProviderName = (provider) => {
     switch (provider) {
-      case 'openai':
-        return 'OpenAI';
-      case 'anthropic':
-        return 'Anthropic';
-      case 'deepseek':
-        return 'DeepSeek';
-      default:
-        return provider;
+      case 'openai': return 'OpenAI';
+      case 'anthropic': return 'Anthropic';
+      case 'deepseek': return 'DeepSeek';
+      case 'google': return 'Google AI';
+      default: return provider;
     }
   };
 
@@ -248,13 +267,6 @@ const ConfigurationStep = ({ onNext }) => {
     }
     
     // Verificar que la API Key del modelo predeterminado esté configurada
-    const modelToApiKeyMap = {
-      'gpt4o': 'openai',
-      'gpt4o-mini': 'openai',
-      'sonnet': 'anthropic',
-      'deepseek': 'deepseek'
-    };
-    
     const requiredProvider = modelToApiKeyMap[defaultModel];
     
     if (!apiKeys[requiredProvider]) {
@@ -271,24 +283,61 @@ const ConfigurationStep = ({ onNext }) => {
       }
     }
     
-    // Guardar configuración en localStorage
-    localStorage.setItem('apiKeys', JSON.stringify(apiKeys));
-    localStorage.setItem('defaultModel', defaultModel);
-    localStorage.setItem('advancedOptions', JSON.stringify({
-      temperature: advancedOptions.temperature,
-      maxTokens: advancedOptions.maxTokens,
-      topP: advancedOptions.topP,
-      frequencyPenalty: advancedOptions.frequencyPenalty,
-      presencePenalty: advancedOptions.presencePenalty
-    }));
-    
-    // Continuar al siguiente paso
-    onNext();
+    // *** Modificar guardado ***
+    try {
+      // Enviar keys al backend para guardar en .env
+      // Asumiendo que FileService.saveApiKeys(apiKeys) existe
+      await FileService.saveApiKeys(apiKeys);
+      showAlert('Configuración de API Keys guardada en el servidor.', 'success');
+
+      // Guardar solo el modelo predeterminado y opciones avanzadas en localStorage
+      localStorage.setItem('defaultModel', defaultModel);
+      localStorage.setItem('advancedOptions', JSON.stringify({
+        temperature: advancedOptions.temperature,
+        maxTokens: advancedOptions.maxTokens,
+        topP: advancedOptions.topP,
+        frequencyPenalty: advancedOptions.frequencyPenalty,
+        presencePenalty: advancedOptions.presencePenalty
+      }));
+      
+      // Continuar al siguiente paso
+      onNext();
+
+    } catch (error) {
+      console.error('Error guardando API Keys en el servidor:', error);
+      showAlert(`Error al guardar la configuración en el servidor: ${error.message}`, 'error');
+    }
   };
 
   const setMaxTokensForModel = () => {
+    const provider = modelToApiKeyMap[defaultModel] || 'deepseek';
     const maxTokens = modelTokenLimits[defaultModel] || 2000;
     handleAdvancedOptionChange('maxTokens', maxTokens);
+  };
+
+  // *** Nueva función para borrar API Key ***
+  const handleClearApiKey = async (provider) => {
+    // Limpiar estado local
+    setApiKeys(prev => ({ ...prev, [provider]: '' }));
+    setVerified(prev => ({ ...prev, [provider]: false }));
+    if (errors[provider]) {
+      setErrors(prev => {
+        const newErrors = { ...prev };
+        delete newErrors[provider];
+        return newErrors;
+      });
+    }
+
+    // Llamar al backend para borrar
+    try {
+      // Asumiendo que FileService.deleteApiKey(provider) existe
+      await FileService.deleteApiKey(provider);
+      showAlert(`API Key de ${getProviderName(provider)} borrada del servidor.`, 'success');
+    } catch (error) {
+      console.error(`Error borrando API Key de ${provider} en servidor:`, error);
+      showAlert(`Error al borrar la API Key de ${provider} en el servidor.`, 'error');
+      // Opcional: Revertir el cambio local si falla el borrado en backend?
+    }
   };
 
   return (
@@ -355,6 +404,19 @@ const ConfigurationStep = ({ onNext }) => {
                   </Button>
                 </span>
               </Tooltip>
+              <Tooltip title={`Borrar API Key de ${getProviderName('openai')}`}>
+                <span>
+                  <IconButton
+                    onClick={() => handleClearApiKey('openai')}
+                    disabled={!apiKeys.openai || verifying}
+                    size="large"
+                    sx={{ mt: 0.5 }}
+                    color="error"
+                  >
+                    <DeleteIcon />
+                  </IconButton>
+                </span>
+              </Tooltip>
             </Box>
           </Grid>
           
@@ -398,6 +460,19 @@ const ConfigurationStep = ({ onNext }) => {
                   >
                     {verifying ? <CircularProgress size={24} /> : 'Verificar'}
                   </Button>
+                </span>
+              </Tooltip>
+              <Tooltip title={`Borrar API Key de ${getProviderName('anthropic')}`}>
+                <span>
+                  <IconButton
+                    onClick={() => handleClearApiKey('anthropic')}
+                    disabled={!apiKeys.anthropic || verifying}
+                    size="large"
+                    sx={{ mt: 0.5 }}
+                    color="error"
+                  >
+                    <DeleteIcon />
+                  </IconButton>
                 </span>
               </Tooltip>
             </Box>
@@ -445,6 +520,77 @@ const ConfigurationStep = ({ onNext }) => {
                   </Button>
                 </span>
               </Tooltip>
+              <Tooltip title={`Borrar API Key de ${getProviderName('deepseek')}`}>
+                <span>
+                  <IconButton
+                    onClick={() => handleClearApiKey('deepseek')}
+                    disabled={!apiKeys.deepseek || verifying}
+                    size="large"
+                    sx={{ mt: 0.5 }}
+                    color="error"
+                  >
+                    <DeleteIcon />
+                  </IconButton>
+                </span>
+              </Tooltip>
+            </Box>
+          </Grid>
+          
+          {/* Google AI Key */}
+          <Grid item xs={12}>
+            <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 1 }}>
+              <FormControl 
+                fullWidth 
+                variant="outlined" 
+                error={!!errors.google}
+              >
+                <TextField
+                  id="google-api-key"
+                  label="Google AI Key (Gemini 2.5 Pro / 2.0 Flash)"
+                  type="password"
+                  value={apiKeys.google}
+                  onChange={(e) => handleApiKeyChange('google', e.target.value)}
+                  error={!!errors.google}
+                  helperText={errors.google}
+                  disabled={verifying}
+                  InputLabelProps={{
+                    shrink: true,
+                  }}
+                  placeholder="AIza..."
+                  InputProps={{
+                    endAdornment: verified.google && (
+                      <Zoom in={verified.google}>
+                        <CheckCircleIcon color="success" sx={{ ml: 1 }} />
+                      </Zoom>
+                    )
+                  }}
+                />
+              </FormControl>
+              <Tooltip title="Verificar API Key">
+                <span>
+                  <Button
+                    variant="outlined"
+                    onClick={() => verifyApiKey('google')}
+                    disabled={!apiKeys.google || verifying}
+                    sx={{ mt: 1, minWidth: 100 }}
+                  >
+                    {verifying ? <CircularProgress size={24} /> : 'Verificar'}
+                  </Button>
+                </span>
+              </Tooltip>
+              <Tooltip title={`Borrar API Key de ${getProviderName('google')}`}>
+                <span>
+                  <IconButton
+                    onClick={() => handleClearApiKey('google')}
+                    disabled={!apiKeys.google || verifying}
+                    size="large"
+                    sx={{ mt: 0.5 }}
+                    color="error"
+                  >
+                    <DeleteIcon />
+                  </IconButton>
+                </span>
+              </Tooltip>
             </Box>
           </Grid>
           
@@ -468,6 +614,8 @@ const ConfigurationStep = ({ onNext }) => {
                 <MenuItem value="gpt4o" disabled={!apiKeys.openai}>OpenAI GPT-4o</MenuItem>
                 <MenuItem value="sonnet" disabled={!apiKeys.anthropic}>Anthropic Sonnet 3.7</MenuItem>
                 <MenuItem value="deepseek" disabled={!apiKeys.deepseek}>DeepSeek</MenuItem>
+                <MenuItem value="gemini-2.5-pro" disabled={!apiKeys.google}>Google Gemini 2.5 Pro</MenuItem>
+                <MenuItem value="gemini-2.0-flash" disabled={!apiKeys.google}>Google Gemini 2.0 Flash</MenuItem>
               </Select>
               <FormHelperText>
                 Selecciona el modelo que se utilizará por defecto para el análisis
@@ -492,7 +640,7 @@ const ConfigurationStep = ({ onNext }) => {
             <>
               <Grid item xs={12}>
                 <Typography variant="subtitle1" sx={{ fontWeight: 'medium', mb: 2 }}>
-                  Opciones avanzadas para {getProviderName(defaultModel === 'sonnet' ? 'anthropic' : defaultModel === 'gpt4o' || defaultModel === 'gpt4o-mini' ? 'openai' : 'deepseek')}
+                  Opciones avanzadas para {getProviderName(modelToApiKeyMap[defaultModel] || 'deepseek')}
                 </Typography>
               </Grid>
             
@@ -546,7 +694,7 @@ const ConfigurationStep = ({ onNext }) => {
                         shrink: true,
                       }}
                     />
-                    <Tooltip title={`Establecer al máximo para ${getProviderName(modelTokenLimits[defaultModel] ? defaultModel : 'deepseek')}: ${modelTokenLimits[defaultModel] || 32000} tokens`}>
+                    <Tooltip title={`Establecer al máximo para ${getProviderName(modelToApiKeyMap[defaultModel] || 'deepseek')}: ${modelTokenLimits[defaultModel] || 32000} tokens`}>
                       <Button
                         variant="outlined"
                         onClick={setMaxTokensForModel}

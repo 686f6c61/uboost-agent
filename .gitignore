@@ -31,3 +31,6 @@ yarn-error.log*
 
 # Archivos de configuración local
 .env
+
+# Environment variables file
+.env

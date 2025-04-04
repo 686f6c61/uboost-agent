@@ -337,7 +337,9 @@ function getModelName(modelId) {
     'gpt4o': 'GPT-4o',
     'gpt4o-mini': 'GPT-4o Mini',
     'sonnet': 'Claude Sonnet',
-    'deepseek': 'DeepSeek'
+    'deepseek': 'DeepSeek',
+    'gemini-2.5-pro': 'Gemini 2.5 Pro',
+    'gemini-2.0-flash': 'Gemini 2.0 Flash'
   };
   
   return models[modelId] || modelId || 'IA';

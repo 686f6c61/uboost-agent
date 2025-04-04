@@ -1,17 +1,19 @@
 const axios = require('axios');
+// Importar la nueva librería
+const { GoogleGenerativeAI, HarmCategory, HarmBlockThreshold } = require('@google/generative-ai');
 
 // Servicio para conectarse a diferentes APIs de IA
 class AIService {
   // Analizar un PDF con el modelo especificado
-  static async analyzePDF(pdfText, model, apiKeys) {
+  static async analyzePDF(pdfText, model /*, apiKeys*/) {
     // Verificar que tenemos texto
     if (!pdfText || pdfText.trim() === '') {
       throw new Error('No se proporcionó texto para analizar');
     }
 
     // Verificar que tenemos un modelo válido
-    if (!model || !apiKeys) {
-      throw new Error('No se proporcionó modelo o API keys');
+    if (!model) {
+      throw new Error('No se proporcionó modelo');
     }
 
     // Limitar el texto a las primeras 3000 palabras (aproximadamente las primeras 3 páginas)
@@ -38,14 +40,25 @@ class AIService {
       NO incluyas ningún otro texto, explicación o análisis fuera del JSON.
     `;
 
+    // *** Opciones avanzadas - recuperar del localStorage o usar defaults ***
+    // En un entorno de servidor real, estas opciones vendrían en la request, no de localStorage.
+    // Por simplicidad aquí, asumimos que se pueden pasar o usar defaults.
+    // const advancedOptions = { temperature: 0.5, maxOutputTokens: 500, topP: 0.9, topK: 40 }; // Ejemplo
+
     try {
       // Seleccionar la API correcta según el modelo
       if (model === 'gpt4o' || model === 'gpt4o-mini') {
-        return await this.callOpenAI(limitedText, instructions, model, apiKeys.openai);
+        const apiKey = process.env.OPENAI_API_KEY;
+        return await this.callOpenAI(limitedText, instructions, model, apiKey);
       } else if (model === 'sonnet') {
-        return await this.callAnthropic(limitedText, instructions, apiKeys.anthropic);
+        const apiKey = process.env.ANTHROPIC_API_KEY;
+        return await this.callAnthropic(limitedText, instructions, apiKey);
       } else if (model === 'deepseek') {
-        return await this.callDeepSeek(limitedText, instructions, apiKeys.deepseek);
+        const apiKey = process.env.DEEPSEEK_API_KEY;
+        return await this.callDeepSeek(limitedText, instructions, apiKey);
+      } else if (model === 'gemini-2.5-pro' || model === 'gemini-2.0-flash') {
+        const apiKey = process.env.GOOGLE_API_KEY;
+        return await this.callGoogleAI(limitedText, instructions, model, apiKey);
       } else {
         throw new Error(`Modelo no soportado: ${model}`);
       }
@@ -56,9 +69,9 @@ class AIService {
   }
 
   // Llamar a la API de OpenAI
-  static async callOpenAI(text, instructions, model, apiKey) {
+  static async callOpenAI(text, instructions, model, apiKey /*, advancedOptions = {} */) {
     if (!apiKey) {
-      throw new Error('API key de OpenAI no proporcionada');
+      throw new Error('API key de OpenAI no configurada en el servidor (.env)');
     }
 
     const modelName = model === 'gpt4o' ? 'gpt-4o' : 'gpt-4o-mini';
@@ -115,9 +128,9 @@ class AIService {
   }
 
   // Llamar a la API de Anthropic (Claude)
-  static async callAnthropic(text, instructions, apiKey) {
+  static async callAnthropic(text, instructions, apiKey /*, advancedOptions = {} */) {
     if (!apiKey) {
-      throw new Error('API key de Anthropic no proporcionada');
+      throw new Error('API key de Anthropic no configurada en el servidor (.env)');
     }
     
     try {
@@ -169,9 +182,9 @@ class AIService {
   }
 
   // Llamar a la API de DeepSeek
-  static async callDeepSeek(text, instructions, apiKey) {
+  static async callDeepSeek(text, instructions, apiKey /*, advancedOptions = {} */) {
     if (!apiKey) {
-      throw new Error('API key de DeepSeek no proporcionada');
+      throw new Error('API key de DeepSeek no configurada en el servidor (.env)');
     }
     
     try {
@@ -220,6 +233,68 @@ class AIService {
       }
     } catch (error) {
       console.error('Error en llamada a DeepSeek:', error.response?.data || error.message);
+      throw error;
+    }
+  }
+
+  // *** Nueva función para llamar a la API de Google Gemini ***
+  static async callGoogleAI(text, instructions, model, apiKey /*, advancedOptions = {} */) {
+    if (!apiKey) {
+      throw new Error('API key de Google AI no configurada en el servidor (.env)');
+    }
+
+    const genAI = new GoogleGenerativeAI(apiKey);
+    const geminiModel = genAI.getGenerativeModel({ 
+      model: model, // Usa el ID del modelo pasado (e.g., "gemini-1.5-pro-latest")
+      // Configuración de seguridad (ejemplo, ajustar según necesidad)
+      safetySettings: [
+        { category: HarmCategory.HARM_CATEGORY_HARASSMENT, threshold: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE },
+        { category: HarmCategory.HARM_CATEGORY_HATE_SPEECH, threshold: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE },
+        { category: HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT, threshold: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE },
+        { category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT, threshold: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE },
+      ],
+      // Configuración de generación (usar las opciones avanzadas si se proporcionan)
+      generationConfig: {
+        // Asegurarse de que los valores son del tipo correcto
+        temperature: advancedOptions.temperature !== undefined ? Number(advancedOptions.temperature) : 0.5, 
+        topP: advancedOptions.topP !== undefined ? Number(advancedOptions.topP) : undefined, // topP y topK son alternativos
+        topK: advancedOptions.topK !== undefined ? Number(advancedOptions.topK) : undefined,
+        maxOutputTokens: advancedOptions.maxTokens !== undefined ? Number(advancedOptions.maxTokens) : 500,
+        // Gemini espera la respuesta en formato JSON
+        responseMimeType: "application/json",
+      },
+    });
+
+    // Crear el prompt combinado
+    const prompt = `${instructions}\n\nTexto del PDF:\n${text}`;
+
+    try {
+      const result = await geminiModel.generateContent(prompt);
+      const response = result.response;
+      const contentText = response.text();
+
+      if (!contentText) {
+        throw new Error('Respuesta vacía de Google AI');
+      }
+
+      // El modelo está configurado para devolver JSON directamente
+      try {
+        return JSON.parse(contentText);
+      } catch (parseError) {
+        console.error('Error al parsear respuesta JSON de Google AI:', contentText);
+        // Intentar extraer JSON si está envuelto en markdown
+        const jsonMatch = contentText.match(/```json\n(\{[\s\S]*\})\n```/);
+        if (jsonMatch && jsonMatch[1]) {
+          try {
+            return JSON.parse(jsonMatch[1]);
+          } catch (innerParseError) {
+             console.error('Error al parsear JSON extraído de Google AI:', jsonMatch[1]);
+          }
+        }
+        throw new Error('Error al parsear la respuesta de la IA (formato JSON esperado)');
+      }
+    } catch (error) {
+      console.error('Error en llamada a Google AI:', error);
       throw error;
     }
   }

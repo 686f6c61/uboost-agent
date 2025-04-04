@@ -40,13 +40,16 @@ const Footer = () => {
               Modelos de IA soportados
             </Typography>
             <Typography variant="body2" color="text.secondary">
-              OpenAI GPT-4o / GPT-4o-mini
+              <b>OpenAI:</b> GPT-4o / GPT-4o-mini
             </Typography>
             <Typography variant="body2" color="text.secondary">
-              Anthropic Sonnet 3.7
+              <b>Anthropic:</b> Sonnet 3.7
             </Typography>
             <Typography variant="body2" color="text.secondary">
-              DeepSeek
+              <b>Google:</b> Gemini 2.5 Pro / Gemini 2.0 Flash
+            </Typography>
+            <Typography variant="body2" color="text.secondary">
+              <b>DeepSeek:</b> V3
             </Typography>
           </Box>
         </Box>
