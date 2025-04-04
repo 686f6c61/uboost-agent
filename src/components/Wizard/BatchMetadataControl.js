@@ -83,12 +83,12 @@ const BatchMetadataControl = ({ filenames, model, apiKeys, onBatchComplete }) =>
       >
         {loading 
           ? `Analizando ${progress > 0 ? `(${Math.round(progress)}%)` : '...'}` 
-          : `Analizar título, autores y año`}
+          : `Analizar título, autores, año y keywords`}
       </Button>
       
       {loading && (
         <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: 'block', textAlign: 'center' }}>
-          Extrayendo título, autores y año de los PDFs usando {getModelName(model)}...
+          Extrayendo título, autores, año y keywords de los PDFs usando {getModelName(model)}...
         </Typography>
       )}
     </Box>

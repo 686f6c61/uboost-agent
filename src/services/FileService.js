@@ -153,6 +153,17 @@ const FileService = {
       console.error('Error al exportar metadatos a CSV:', error);
       throw error;
     }
+  },
+  
+  // *** Nueva función para eliminar entrada de metadatos ***
+  async deleteMetadataEntry(filename) {
+    try {
+      const response = await axios.delete(`${API_URL}/metadata/${filename}`);
+      return response.data;
+    } catch (error) {
+      console.error('Error deleting metadata entry:', error);
+      throw error; // O manejar el error de forma más específica
+    }
   }
 };
 

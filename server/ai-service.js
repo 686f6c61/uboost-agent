@@ -17,21 +17,24 @@ class AIService {
     // Limitar el texto a las primeras 3000 palabras (aproximadamente las primeras 3 páginas)
     const limitedText = pdfText.split(' ').slice(0, 3000).join(' ');
 
-    // Instrucciones específicas para extraer título, autores y año
+    // Instrucciones específicas para extraer título, autores, año y keywords
     const instructions = `
       Lee cuidadosamente el siguiente extracto de un artículo científico (primeras páginas) y extrae:
-      1. El título completo del artículo
-      2. Los autores (nombres completos, separados por comas si hay más de uno)
-      3. El año de publicación
+      1. El título completo del artículo.
+      2. Los autores (nombres completos, separados por comas si hay más de uno).
+      3. El año de publicación (solo el número de 4 dígitos).
+      4. Las palabras clave (Keywords) proporcionadas en el artículo (separadas por comas).
 
       Responde ÚNICAMENTE en formato JSON con el siguiente formato exacto:
       {
         "title": "Título completo del artículo",
         "authors": "Nombres de los autores separados por comas",
-        "year": "Año de publicación (solo el número de 4 dígitos)"
+        "year": "Año de publicación (solo 4 dígitos)",
+        "keywords": "PalabraClave1, PalabraClave2, PalabraClave3"
       }
 
-      Si no puedes determinar alguno de estos datos, usa "Desconocido" como valor.
+      Si no puedes determinar alguno de estos datos de forma fiable, usa "Desconocido" como valor para ese campo específico.
+      Si no hay palabras clave explícitas, usa "Desconocido" para el campo keywords.
       NO incluyas ningún otro texto, explicación o análisis fuera del JSON.
     `;
 

@@ -47,6 +47,24 @@ const ServerFileList = ({
   const [exporting, setExporting] = useState(false);
   const [openTableDialog, setOpenTableDialog] = useState(false);
   
+  const loadSavedMetadata = async () => {
+    try {
+      // La lógica de setLoading/setError podría manejarse aquí si fuera necesario,
+      // pero como se llama desde efectos, quizás no sea crítico.
+      const response = await FileService.getAllMetadata();
+      if (response.success && response.metadata) {
+        setFileMetadata(response.metadata);
+      } else {
+         // Manejar el caso de que no haya metadatos o haya error
+         console.error('No se pudieron cargar los metadatos desde ServerFileList');
+         setFileMetadata({}); // Establecer como vacío para evitar errores
+      }
+    } catch (error) {
+      console.error('Error al cargar metadatos guardados en ServerFileList:', error);
+      setFileMetadata({}); // Establecer como vacío en caso de error
+    }
+  };
+  
   // Cargar el modelo y las API keys de la configuración
   useEffect(() => {
     const storedDefaultModel = localStorage.getItem('defaultModel');
@@ -69,18 +87,7 @@ const ServerFileList = ({
   
   // Cargar metadatos guardados al iniciar
   useEffect(() => {
-    const loadSavedMetadata = async () => {
-      try {
-        const response = await FileService.getAllMetadata();
-        if (response.success && response.metadata) {
-          setFileMetadata(response.metadata);
-        }
-      } catch (error) {
-        console.error('Error al cargar metadatos guardados:', error);
-      }
-    };
-    
-    loadSavedMetadata();
+    loadSavedMetadata(); 
   }, []);
   
   // Manejar la actualización de metadatos de un archivo
@@ -123,12 +130,12 @@ const ServerFileList = ({
       const response = await FileService.renameFiles(selectedServerFiles);
       
       if (response.success) {
-        // Notificar al componente padre para actualizar la lista de archivos
+        // Notificar y esperar a que el padre actualice la lista de archivos (prop 'files')
         if (onFilesUpdated) {
-          onFilesUpdated();
+          await onFilesUpdated(); // Esperar a que el padre actualice
+          // Una vez que 'files' (prop) se actualice, recargar metadatos locales
+          await loadSavedMetadata(); // Asegurarse de que los metadatos locales están sincronizados
         }
-        
-        // Mostrar mensaje de éxito
         console.log(`${response.results.success.length} archivos renombrados`);
       } else {
         console.error('Error al renombrar archivos:', response.message);
@@ -311,7 +318,10 @@ const ServerFileList = ({
       >
         <DialogTitle>Tabla de Metadatos</DialogTitle>
         <DialogContent dividers>
-          <MetadataTable />
+          <MetadataTable 
+            metadata={fileMetadata} 
+            existingFiles={files.map(f => f.filename)}
+          />
         </DialogContent>
         <DialogActions>
           <Button onClick={handleCloseTableDialog}>Cerrar</Button>

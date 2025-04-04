@@ -143,6 +143,15 @@ app.delete('/api/files/:filename', (req, res) => {
       });
     }
     
+    // *** Añadir eliminación de metadatos aquí ***
+    const allMetadata = loadMetadata();
+    if (allMetadata[filename]) {
+      delete allMetadata[filename];
+      saveMetadata(allMetadata);
+      console.log(`[Delete Single] Metadata entry removed for ${filename}`);
+    }
+    // *** Fin de la adición ***
+
     res.status(200).json({
       success: true,
       message: 'Archivo eliminado correctamente'
@@ -184,6 +193,23 @@ app.post('/api/files/delete-multiple', (req, res) => {
   
   Promise.all(deletePromises)
     .then(() => {
+      // *** Añadir eliminación de metadatos aquí ***
+      if (results.success.length > 0) {
+        const allMetadata = loadMetadata();
+        let metadataChanged = false;
+        results.success.forEach(deletedFilename => {
+          if (allMetadata[deletedFilename]) {
+            delete allMetadata[deletedFilename];
+            metadataChanged = true;
+            console.log(`[Delete Multiple] Metadata entry removed for ${deletedFilename}`);
+          }
+        });
+        if (metadataChanged) {
+          saveMetadata(allMetadata);
+        }
+      }
+      // *** Fin de la adición ***
+
       res.status(200).json({
         success: true,
         message: `${results.success.length} archivos eliminados, ${results.failed.length} errores`,
@@ -349,11 +375,24 @@ app.post('/api/files/analyze/batch', async (req, res) => {
         // Analizar el PDF con IA
         const metadata = await AIService.analyzePDF(extractedText, model, apiKeys);
         
+        // *** Log para depurar la respuesta de la IA ***
+        console.log(`[Debug Analyze Batch] AI Response for ${filename}:`, JSON.stringify(metadata));
+
         results.push({
           filename,
           success: true,
           metadata
         });
+
+        // *** Añadir guardado de metadatos aquí ***
+        if (metadata) { // Solo guardar si se obtuvieron metadatos
+          const allMetadata = loadMetadata();
+          allMetadata[filename] = metadata;
+          // *** Log para depurar lo que se va a guardar ***
+          console.log(`[Debug Analyze Batch] Saving metadata for ${filename}:`, JSON.stringify(allMetadata[filename]));
+          saveMetadata(allMetadata);
+        }
+
       } catch (error) {
         console.error(`Error al analizar el archivo ${filename}:`, error);
         results.push({
@@ -502,6 +541,33 @@ app.get('/api/files/export-csv', (req, res) => {
     res.status(500).json({
       success: false,
       message: 'Error al exportar a CSV',
+      error: error.message
+    });
+  }
+});
+
+// *** Nueva Ruta para eliminar solo la entrada de metadatos ***
+app.delete('/api/metadata/:filename', (req, res) => {
+  const filename = req.params.filename;
+  
+  try {
+    const allMetadata = loadMetadata();
+    
+    if (allMetadata[filename]) {
+      delete allMetadata[filename];
+      saveMetadata(allMetadata);
+      console.log(`[API Delete Metadata] Metadata entry deleted for: ${filename}`);
+      res.status(200).json({ success: true, message: 'Entrada de metadatos eliminada.' });
+    } else {
+      // Si no existe, igual consideramos éxito porque el estado deseado es que no esté.
+      console.log(`[API Delete Metadata] Metadata entry not found for: ${filename}, considering success.`);
+      res.status(200).json({ success: true, message: 'Entrada de metadatos no encontrada.' });
+    }
+  } catch (error) {
+    console.error(`Error deleting metadata entry for ${filename}:`, error);
+    res.status(500).json({
+      success: false,
+      message: 'Error interno al eliminar la entrada de metadatos',
       error: error.message
     });
   }

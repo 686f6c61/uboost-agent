@@ -106,8 +106,21 @@ const PDFMetadataItem = ({
                 <span style={{ fontWeight: 'medium' }}>Autores:</span> {currentMetadata.authors || 'Desconocido'}
               </Typography>
             </Grid>
+            {/* Fila para Keywords con Chips */}
+            {currentMetadata.keywords && currentMetadata.keywords !== 'Desconocido' && (
+              <Grid item xs={12}>
+                <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
+                  <Typography variant="body2" color="text.secondary" sx={{ fontWeight: 'medium', mr: 0.5 }}>
+                    Keywords:
+                  </Typography>
+                  {currentMetadata.keywords.split(',').map(keyword => keyword.trim()).filter(k => k).map((keyword, index) => (
+                    <Chip key={index} label={keyword} size="small" variant="outlined" />
+                  ))}
+                </Box>
+              </Grid>
+            )}
             <Grid item xs={12}>
-              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mt: 1 }}>
                 <Chip 
                   label={`Año: ${currentMetadata.year || 'N/A'}`} 
                   size="small" 
